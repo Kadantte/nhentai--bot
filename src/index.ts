@@ -1,87 +1,107 @@
+import 'reflect-metadata';
 import { config } from 'dotenv';
 config();
-import { createServer } from 'http';
-createServer().listen(process.env.PORT || 8080);
-import { Snowflake, TextChannel } from 'discord.js';
-const { LOGGING_CHANNEL } = process.env;
-import axios from 'axios';
-import { Client } from './structures/Client';
-const client = new Client();
-client.start();
 
-let cur = 0;
+import { Client, Intents, Options, Util } from 'discord.js';
+import { URL, fileURLToPath, pathToFileURL } from 'url';
+import readdirp from 'readdirp';
+import { container } from 'tsyringe';
+import mongoose from 'mongoose';
+import i18next from 'i18next';
+import Backend from 'i18next-fs-backend';
 
-async function getRandomCode() {
-    const data = await client.nhentai.random();
-    return data?.gallery?.id?.toString() ?? '177013';
+import { Command, commandInfo } from './Command';
+import { tCommands, tMongoose } from './tokens';
+import { logger } from './logger';
+import type { Event } from './Event';
+
+const connection = mongoose.createConnection(String(process.env.MONGODB_URI), {
+	family: 4,
+	autoIndex: true,
+	keepAlive: true,
+	keepAliveInitialDelay: 300000,
+	serverSelectionTimeoutMS: 5000,
+});
+
+const client = new Client({
+    intents: [
+        Intents.FLAGS.GUILDS,
+        Intents.FLAGS.GUILD_MEMBERS,
+        Intents.FLAGS.GUILD_MESSAGES,
+        Intents.FLAGS.GUILD_VOICE_STATES,
+    ],
+	makeCache: Options.cacheWithLimits({
+		// @ts-expect-error
+		ChannelManager: {
+			sweepInterval: 3600,
+			sweepFilter: Util.archivedThreadSweepFilter(),
+		},
+		GuildChannelManager: {
+			sweepInterval: 3600,
+			sweepFilter: Util.archivedThreadSweepFilter(),
+		},
+		MessageManager: 100,
+		StageInstanceManager: 10,
+		ThreadManager: {
+			sweepInterval: 3600,
+			sweepFilter: Util.archivedThreadSweepFilter(),
+		},
+		VoiceStateManager: 10,
+	}),
+});
+client.setMaxListeners(20);
+
+const commands = new Map<string, Command>();
+
+container.register(Client, { useValue: client });
+container.register(tCommands, { useValue: commands });
+container.register(tMongoose, { useValue: connection });
+
+const commandFiles = readdirp(fileURLToPath(new URL('./commands', import.meta.url)), {
+	fileFilter: '*.js',
+});
+
+const eventFiles = readdirp(fileURLToPath(new URL('./events', import.meta.url)), {
+	fileFilter: '*.js',
+});
+
+try {
+	await i18next.use(Backend).init({
+		backend: {
+			loadPath: fileURLToPath(new URL('./locales/{{lng}}/{{ns}}.json', import.meta.url)),
+		},
+		cleanCode: true,
+		fallbackLng: ['en-US'],
+		defaultNS: 'translation',
+		lng: 'en-US',
+		ns: ['translation'],
+	});
+
+
+	for await (const dir of commandFiles) {
+		const cmdInfo = commandInfo(dir.path);
+		if (!cmdInfo) continue;
+
+		const command = container.resolve<Command>((await import(pathToFileURL(dir.fullPath).href)).default);
+		logger.info(
+			{ command: { name: command.name ?? cmdInfo.name } },
+			`Registering command: ${command.name ?? cmdInfo.name}`,
+		);
+
+		commands.set((command.name ?? cmdInfo.name).toLowerCase(), command);
+	}
+
+	for await (const dir of eventFiles) {
+		const event = container.resolve<Event>((await import(pathToFileURL(dir.fullPath).href)).default);
+		logger.info({ event: { name: event.name, event: event.event } }, `Registering event: ${event.name}`);
+
+		if (event.disabled) {
+			continue;
+		}
+		event.execute();
+	}
+
+	await client.login();
+} catch (e) {
+	logger.error(e, e.message);
 }
-
-async function changePresence() {
-    client.user.setPresence({
-        activities: [
-            [
-                {
-                    name: [
-                        'Abandon all hope, ye who enter here',
-                        'ここから入らんとする者は一切の希望を放棄せよ',
-                    ][Math.round(Math.random())],
-                },
-            ],
-            [{ name: await getRandomCode(), type: <const>'WATCHING' }],
-            [
-                {
-                    name: 'your commands',
-                    type: <const>'LISTENING',
-                },
-            ],
-        ][cur],
-    });
-    cur = (cur + 1) % 3;
-    setTimeout(changePresence, 300000);
-}
-
-client.once('ready', async () => {
-    if (!client.application?.owner) await client.application?.fetch();
-    const owner = client.application.owner.id;
-    client.ownerID = owner;
-    client.logger.info(`[READY] Fetched application profile. Setting owner ID to ${owner}.`);
-    client.logger.info(`[READY] Logged in as ${client.user.tag}! ID: ${client.user.id}.`);
-    await changePresence();
-    await client.db.init();
-    await client.commandHandler.loadCommands();
-});
-
-client.on('guildCreate', async guild => {
-    client.logger.info(
-        `Joined guild "${guild.name}" (ID: ${guild.id}) (Total: ${client.guilds.cache.size} guilds)`
-    );
-    const channel = await client.channels.fetch(LOGGING_CHANNEL as Snowflake);
-    if (channel instanceof TextChannel) {
-        channel.send({
-            embeds: [
-                client.embeds
-                    .default()
-                    .setDescription(
-                        '```\n' +
-                            `Joined guild "${guild.name}" (ID: ${guild.id}) (Total: ${client.guilds.cache.size} guilds)` +
-                            '\n```'
-                    )
-                    .setTimestamp(),
-            ],
-        });
-    }
-});
-
-client.on('error', err => {
-    if (axios.isAxiosError(err)) client.logger.error(err.message);
-    else client.logger.error(err);
-});
-client.on('disconnect', () => client.logger.warn('[EVENT] Disconnecting...'));
-process.on('uncaughtException', err => {
-    if (axios.isAxiosError(err)) client.logger.error(err.message);
-    else client.logger.stackTrace(err)
-});
-process.on('unhandledRejection', err => {
-    if (axios.isAxiosError(err)) client.logger.error(err.message);
-    else client.logger.stackTrace(err)
-});

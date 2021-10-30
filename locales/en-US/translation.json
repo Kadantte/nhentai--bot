@@ -1,0 +1,9 @@
+{
+    "common": {
+        "errors": {
+            "nsfw": "This command can only be used in NSFW channels.",
+            "permissions": "You don't have the required permissions to use this command.",
+            "cooldown": "This command is in cooldown (`{{- time }}` seconds left)."
+        }
+    }
+}

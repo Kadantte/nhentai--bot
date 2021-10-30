@@ -1,34 +1,39 @@
 {
     "compilerOptions": {
-        "lib": ["ES2019.Array"],
-        "target": "es6",
-        "module": "commonjs",
-        "sourceMap": false,
-        "alwaysStrict": true,
-        "declaration": false,
-        "listEmittedFiles": true,
-        "esModuleInterop": true,
-        "skipLibCheck": true,
-        "forceConsistentCasingInFileNames": true,
+        "allowUnreachableCode": false,
+        "allowUnusedLabels": false,
+        "noFallthroughCasesInSwitch": true,
+        "noImplicitOverride": true,
+        "noImplicitReturns": true,
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "useUnknownInCatchVariables": false,
+        "strict": true,
+
+        "module": "ESNext",
+        "moduleResolution": "node",
         "resolveJsonModule": true,
-        "strictPropertyInitialization": false,
+
+        "declaration": false,
+        "importHelpers": true,
+        "importsNotUsedAsValues": "error",
+        "inlineSources": true,
+        "newLine": "lf",
+        "noEmitHelpers": true,
         "outDir": "build",
-        "types": ["node"],
-        "emitDecoratorMetadata": false,
-        "downlevelIteration": true,
-        "paths": {
-            "@api/*": ["src/api/*"],
-            "@constants": ["src/constants"],
-            "@database/*": ["src/database/*"],
-            "@structures": ["src/structures/index"],
-        },
-        "plugins": [
-            {
-                "transform": "@zerollup/ts-transform-paths"
-            }
-        ],
-        "baseUrl": ".",
-        "rootDir": "."
+        "preserveConstEnums": false,
+        "removeComments": false,
+        "sourceMap": true,
+        "esModuleInterop": true,
+        "forceConsistentCasingInFileNames": true,
+
+        "emitDecoratorMetadata": true,
+        "experimentalDecorators": true,
+        "lib": ["ESNext"],
+        "target": "ES2020",
+        "useDefineForClassFields": true,
+
+        "skipLibCheck": true,
     },
     "include": ["src/**/*"]
 }
